@@ -46,57 +46,45 @@ def get_resource() -> tuple:
     return (files_path,)
 
 
-def add_set_like_optimize(add_set: dict) -> dict:
-    for add_set_key in add_set.keys():
-        for add_set_ip in add_set[add_set_key]:
-            if add_set.get(add_set_ip, "-1") != "-1":
-                add_set[add_set_key].extend(add_set[add_set_ip])
-                add_set[add_set_key].remove(add_set_ip)
-    return add_set
-
-
+# def add_set_like_optimize(add_set: dict) -> dict:
+#     for add_set_key in add_set.keys():
+#         for add_set_ip in add_set[add_set_key]:
+#             if add_set.get(add_set_ip, "-1") != "-1":
+#                 add_set[add_set_key].extend(add_set[add_set_ip])
+#                 add_set[add_set_key].remove(add_set_ip)
+#     return add_set
+#
+#
 def resource_list_optimize(resource_list: list, address_set: dict, application_set: dict) -> tuple:
     # while True:需要查找算法
     # 需要优化
-    for i in range(5):
-        address_set = add_set_like_optimize(address_set)
-    for i in range(8):
-        application_set = add_set_like_optimize(application_set)
+    # for i in range(8):
+    #     address_set = add_set_like_optimize(address_set)
+    # for i in range(8):
+    #     application_set = add_set_like_optimize(application_set)
 
     for resource_dict in resource_list:
         # Inside
-        dict_key_tuple = ("Inside","Outside","ports")
+        dict_key_tuple = ("Inside", "Outside", "ports")
         for dict_key in dict_key_tuple:
             for resource_dict_inside in resource_dict[dict_key]:
                 if address_set.get(resource_dict_inside, "-1") != "-1":
                     resource_dict[dict_key].extend(address_set[resource_dict_inside])
                     resource_dict[dict_key].remove(resource_dict_inside)
 
-        # Outside
-        # for resource_dict_outside in resource_dict["Outside"]:
-        #     if address_set.get(resource_dict_outside, "-1") != "-1":
-        #         resource_dict["Outside"].extend(address_set[resource_dict_outside])
-        #         resource_dict["Outside"].remove(resource_dict_outside)
-        #
-        # # ports
-        # for resource_dict_ports in resource_dict["ports"]:
-        #     if application_set.get(resource_dict_ports, "-1") != "-1":
-        #         resource_dict["ports"].extend(application_set[resource_dict_ports])
-        #         resource_dict["ports"].remove(resource_dict_ports)
-
     return tuple(resource_list)
-    # return application_set
 
 
 # @pysnooper.snoop()
 def juniper_firewall_policy(files_path: tuple, dict_mod: dict) -> tuple:
     resource_list = []
     address_set = {}
+    address_ip = {}
     application_set = {}
     area = ""
     dict = copy.deepcopy(dict_mod)
     files_path = list(*files_path)
-    # print(files_path[0])
+
     for line in fileinput.input(files_path[0], encoding="utf-8"):
         line = line.strip()
 
@@ -131,11 +119,17 @@ def juniper_firewall_policy(files_path: tuple, dict_mod: dict) -> tuple:
 
         if line.startswith("set security zones security-zone"):
             if line.rfind("address-set") > 0:
-                _, ip_group, _, add_ip_group = pattern_zones_application.parse(line)
-                if address_set.get(ip_group, "-1") != "-1":
-                    address_set[ip_group].append(add_ip_group)
+                _, ip_group, add_flag, add_ip_group = pattern_zones_application.parse(line)
+                if add_flag == "address-set":
+                    if address_set.get(ip_group, "-1") != "-1":
+                        address_set[ip_group].append(add_ip_group)
+                    else:
+                        address_set.update({ip_group: [add_ip_group]})
                 else:
-                    address_set.update({ip_group: [add_ip_group]})
+                    if address_ip.get(ip_group, "-1") != "-1":
+                        address_ip[ip_group].append(add_ip_group)
+                    else:
+                        address_ip.update({ip_group: [add_ip_group]})
 
         if line.startswith("set applications application-set"):
             if line.rfind("application") > line.rfind("application-set"):
@@ -151,7 +145,34 @@ def juniper_firewall_policy(files_path: tuple, dict_mod: dict) -> tuple:
                 else:
                     application_set.update({app_set: [app_group]})
 
+    address_set = address_set_optimize(address_set, address_ip)
+
+    # print(address_set)
+    # print(address_ip)
+
     return (resource_list, address_set, application_set)
+
+
+# @pysnooper.snoop()
+def address_set_optimize(address_set: dict, address_ip: dict) -> dict:
+    address_set = address_set
+    # print(address_ip)
+    # print("*"*15)
+    # 判断ip——group和ip地址的对应关系
+
+    for address_set_key in address_set.keys():
+        for add_set_group in address_set[address_set_key]:
+            if address_set.get(add_set_group, "-1") != "-1":
+                address_set[address_set_key].extend(address_set[add_set_group])
+                address_set[address_set_key].remove(add_set_group)
+    for i in range(4):
+        for address_set_key in address_set.keys():
+            for add_set_group in address_set[address_set_key]:
+                if address_ip.get(add_set_group,"-1") != "-1":
+                    address_set[address_set_key].extend(address_ip[add_set_group])
+                    address_set[address_set_key].remove(add_set_group)
+
+    return address_set
 
 
 # @pysnooper.snoop()
